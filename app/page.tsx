@@ -127,7 +127,7 @@ export default function DashboardPage() {
       try {
         const { getAggregateMetrics } = await import('@/services/complaints');
         
-        const [healthRes, satRes, aggMetrics] = await Promise.all([
+        const [healthRes, satRes, aggMetrics]: any = await Promise.all([
           supabase.from('delhi_health_score').select('health_score').single(),
           supabase.from('citizen_satisfaction').select('satisfaction_percentage').single(),
           getAggregateMetrics()
