@@ -83,12 +83,13 @@ export default function ManageComplaintModal({
     setError(null);
     
     try {
+      // @ts-ignore
       const { error } = await supabase
         .from("complaints")
         .update({
           assigned_officer_id: selectedOfficer,
           status: "in_progress",
-        } as any)
+        })
         .eq("id", complaint.id);
       
       if (error) {
@@ -115,12 +116,13 @@ export default function ManageComplaintModal({
     setError(null);
     
     try {
+      // @ts-ignore
       const { error } = await supabase
         .from("complaints")
         .update({
           status: "resolved",
           resolved_at: new Date().toISOString(),
-        } as any)
+        })
         .eq("id", complaint.id);
       
       if (error) {

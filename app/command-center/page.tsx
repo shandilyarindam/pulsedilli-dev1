@@ -116,7 +116,8 @@ export default function CommandCenter() {
     setComplaints((prev) =>
       prev.map((c) => (c.id === id ? { ...c, status: "open" } : c))
     );
-    await supabase.from("complaints").update({ status: "submitted" } as any).eq("id", id);
+    // @ts-ignore
+    await supabase.from("complaints").update({ status: "submitted" }).eq("id", id);
     fetchData();
   }
 

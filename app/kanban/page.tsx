@@ -129,9 +129,10 @@ export default function KanbanPage() {
         c.id === id ? { ...c, status: "open" } : c
       )
     );
+    // @ts-ignore
     await supabase
       .from("complaints")
-      .update({ status: "submitted" } as any)
+      .update({ status: "submitted" })
       .eq("id", id);
     fetchData();
   }
