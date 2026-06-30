@@ -131,7 +131,7 @@ const Sidebar = memo(function Sidebar() {
         {/* Logo row */}
         <div className="shrink-0 flex items-center border-b border-[#E8EDF5] py-5 overflow-hidden"
           style={{ paddingLeft: isExpanded ? "1rem" : "0.5rem", paddingRight: isExpanded ? "1rem" : "0.5rem" }}>
-          <img src="/emblem.png" alt="Emblem" className="h-10 w-8 object-contain shrink-0" />
+          <img src="/pulsedilli_logo.png" alt="PulseDilli Logo" className="h-10 w-auto max-w-[40px] object-contain shrink-0" />
           <span
             className={`ml-3 flex flex-col whitespace-nowrap overflow-hidden
               transition-all duration-300 ease-in-out
@@ -148,17 +148,7 @@ const Sidebar = memo(function Sidebar() {
           <NavItems expanded={isExpanded} />
         </nav>
 
-        {/* Bottom */}
-        <div className={`shrink-0 mt-auto border-t border-[#E8EDF5] py-5 overflow-hidden transition-all duration-300 ease-in-out ${isExpanded ? "px-4" : "px-2"}`}>
-          <span
-            className={`block text-[10px] font-bold text-[#94A3B8] uppercase tracking-wide leading-tight whitespace-nowrap
-              transition-all duration-300 ease-in-out
-              ${isExpanded ? "opacity-100 max-w-[200px]" : "opacity-0 max-w-0"}`}
-            style={{ willChange: "opacity" }}
-          >
-            Government of<br />NCT of Delhi
-          </span>
-        </div>
+        {/* Bottom text removed as requested */}
       </aside>
 
       {/* ── Mobile full-width drawer ───────────────────────────────────────── */}
@@ -177,7 +167,7 @@ const Sidebar = memo(function Sidebar() {
         {/* Logo + close */}
         <div className="shrink-0 flex items-center justify-between border-b border-[#E8EDF5] py-5 px-4">
           <div className="flex items-center gap-3">
-            <img src="/emblem.png" alt="Emblem" className="h-10 w-8 object-contain shrink-0" />
+            <img src="/pulsedilli_logo.png" alt="PulseDilli Logo" className="h-10 w-auto max-w-[40px] object-contain shrink-0" />
             <span className="text-[18px] font-black tracking-tight text-[#0F172A]">PulseDilli</span>
           </div>
           <button
@@ -193,11 +183,7 @@ const Sidebar = memo(function Sidebar() {
           <NavItems expanded={true} />
         </nav>
 
-        <div className="shrink-0 mt-auto border-t border-[#E8EDF5] py-5 px-4">
-          <span className="block text-[10px] font-bold text-[#94A3B8] uppercase tracking-wide leading-tight">
-            Government of<br />NCT of Delhi
-          </span>
-        </div>
+        {/* Bottom text removed as requested */}
       </div>
     </>
   );
