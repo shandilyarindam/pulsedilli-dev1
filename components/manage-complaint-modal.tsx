@@ -84,13 +84,7 @@ export default function ManageComplaintModal({
     
     try {
       // @ts-ignore
-      const { error } = await supabase
-        .from("complaints")
-        .update({
-          assigned_officer_id: selectedOfficer,
-          status: "in_progress",
-        })
-        .eq("id", complaint.id);
+      const { error } = await supabase.from("complaints").update({ assigned_officer_id: selectedOfficer, status: "in_progress" }).eq("id", complaint.id);
       
       if (error) {
         throw new Error(error.message);
@@ -117,13 +111,7 @@ export default function ManageComplaintModal({
     
     try {
       // @ts-ignore
-      const { error } = await supabase
-        .from("complaints")
-        .update({
-          status: "resolved",
-          resolved_at: new Date().toISOString(),
-        })
-        .eq("id", complaint.id);
+      const { error } = await supabase.from("complaints").update({ status: "resolved", resolved_at: new Date().toISOString() }).eq("id", complaint.id);
       
       if (error) {
         throw new Error(error.message);

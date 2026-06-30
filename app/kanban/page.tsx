@@ -130,10 +130,7 @@ export default function KanbanPage() {
       )
     );
     // @ts-ignore
-    await supabase
-      .from("complaints")
-      .update({ status: "submitted" })
-      .eq("id", id);
+    await supabase.from("complaints").update({ status: "submitted" }).eq("id", id);
     fetchData();
   }
 
