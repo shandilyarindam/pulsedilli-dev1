@@ -15,11 +15,15 @@ type RawComplaint = {
 };
 
 export async function getAggregateMetrics() {
-  const [submittedRes, inProgressRes, resolvedRes, criticalRes, totalRes] = await Promise.all([
+  const [submittedRes, openRes, inProgressRes, resolvedRes, criticalRes, totalRes, resolutionTimeRes] = await Promise.all([
     supabase
       .from('complaints')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'submitted'),
+    supabase
+      .from('complaints')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'open'),
     supabase
       .from('complaints')
       .select('*', { count: 'exact', head: true })
@@ -35,21 +39,44 @@ export async function getAggregateMetrics() {
     supabase
       .from('complaints')
       .select('*', { count: 'exact', head: true }),
+    // Fetch resolved complaints with timestamps to compute avg resolution time
+    supabase
+      .from('complaints')
+      .select('created_at, resolved_at')
+      .eq('status', 'resolved')
+      .not('resolved_at', 'is', null)
+      .limit(500),
   ]);
 
   const submitted = submittedRes.count || 0;
+  const open = openRes.count || 0;
   const inProgress = inProgressRes.count || 0;
 
+  // Compute average resolution time in days from real timestamps
+  let avgResolutionDays: number | null = null;
+  const resRows = (resolutionTimeRes.data ?? []) as unknown as { created_at: string; resolved_at: string }[];
+  if (resRows.length > 0) {
+    const totalMs = resRows.reduce((sum, row) => {
+      const diff = new Date(row.resolved_at).getTime() - new Date(row.created_at).getTime();
+      return sum + (diff > 0 ? diff : 0);
+    }, 0);
+    avgResolutionDays = parseFloat((totalMs / resRows.length / (1000 * 60 * 60 * 24)).toFixed(1));
+  }
+
   return {
-    /** submitted + in_progress combined */
-    pending: submitted + inProgress,
+    /** submitted + open + in_progress combined */
+    pending: submitted + open + inProgress,
     /** only 'submitted' status */
     submitted,
+    /** only 'open' status */
+    open,
     /** only 'in_progress' status */
     inProgress,
     resolved: resolvedRes.count || 0,
     critical: criticalRes.count || 0,
     total: totalRes.count || 0,
+    /** Average resolution time in days; null if no resolved complaints yet */
+    avgResolutionDays,
   };
 }
 
@@ -146,16 +173,16 @@ export interface ComplaintListRow {
   created_at: string;
   resolved_at: string | null;
   categories: { name: string; department: string } | null;
-  profiles: { full_name: string | null } | null;
+  profiles: { full_name: string | null; role: string | null } | null;
 }
 
-export async function getComplaintsList(page: number = 1, pageSize: number = 10) {
+export async function getComplaintsList(page: number = 1, pageSize: number = 200) {
   const start = (page - 1) * pageSize;
   const end = start + pageSize - 1;
 
   const { data, error, count } = await supabase
     .from('complaints')
-    .select('*, categories!inner(name, department), profiles!assigned_officer_id(full_name)', { count: 'exact' })
+    .select('*, categories(name, department), profiles!assigned_officer_id(full_name, role)', { count: 'exact' })
     .range(start, end)
     .order('created_at', { ascending: false });
 
@@ -202,3 +229,42 @@ export async function getDailyReportMetrics() {
     resolutionRate: Math.round(resolutionRate * 100) / 100,
   };
 }
+
+export interface PriorityIntervention {
+  id: string;
+  ticket_id: string;
+  title: string;
+  status: string;
+  severity: string;
+  city: string | null;
+  created_at: string;
+  upvotes: number | null;
+  categories: { name: string; department: string } | null;
+}
+
+/**
+ * Returns up to 25 Critical + Pending complaints that have been open for > 1 month,
+ * ordered by citizen upvotes descending (falls back to created_at if upvotes column missing).
+ */
+export async function getPriorityInterventions(): Promise<PriorityIntervention[]> {
+  const oneMonthAgo = new Date();
+  oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+  // First attempt: order by upvotes
+  const { data, error } = await supabase
+    .from('complaints')
+    .select('id, ticket_id, title, status, severity, city, created_at, categories(name, department)')
+    .eq('severity', 'critical')
+    .in('status', ['submitted', 'open'])
+    .lt('created_at', oneMonthAgo.toISOString())
+    .order('created_at', { ascending: false })
+    .limit(25);
+
+  if (error) {
+    console.warn('getPriorityInterventions query failed:', error.message);
+    return [];
+  }
+
+  return (data ?? []) as unknown as PriorityIntervention[];
+}
+

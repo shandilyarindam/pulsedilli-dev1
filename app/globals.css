@@ -83,11 +83,11 @@
   --sidebar-ring: oklch(0.708 0 0);
 
   /* ── Jan Samadhan Theme Variables (Light) ── */
-  --app-bg: #F0F2F5;
+  --app-bg: #f8fafc;
   --surface: #ffffff;
-  --surface-elevated: #f8fafc;
-  --brand: #1B3A5C;
-  --brand-hover: #15304d;
+  --surface-elevated: #f1f5f9;
+  --brand: #dc2626;
+  --brand-hover: #b91c1c;
   --brand-fg: #ffffff;
   --text-primary: #1e293b;
   --text-secondary: #64748b;
@@ -95,7 +95,7 @@
   --border-color: #e2e8f0;
   --border-subtle: #f1f5f9;
   --sidebar-bg: #ffffff;
-  --btn-primary: #1B3A5C;
+  --btn-primary: #dc2626;
   --btn-primary-fg: #ffffff;
   --chart-grid-color: #f1f1f1;
   --skeleton: #e2e8f0;
@@ -110,66 +110,7 @@
   --escalated-row: rgba(254, 242, 242, 0.6);
 }
 
-.dark {
-  --background: #0a0a0a;
-  --foreground: #f1f5f9;
-  --card: #1a1a1a;
-  --card-foreground: #f1f5f9;
-  --popover: #1a1a1a;
-  --popover-foreground: #f1f5f9;
-  --primary: #FACC15;
-  --primary-foreground: #0a0a0a;
-  --secondary: #242424;
-  --secondary-foreground: #f1f5f9;
-  --muted: #242424;
-  --muted-foreground: #94a3b8;
-  --accent: #242424;
-  --accent-foreground: #f1f5f9;
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: #2a2a2a;
-  --input: #2a2a2a;
-  --ring: #FACC15;
-  --chart-1: #FACC15;
-  --chart-2: #a3a3a3;
-  --chart-3: #737373;
-  --chart-4: #525252;
-  --chart-5: #404040;
-  --sidebar: #111111;
-  --sidebar-foreground: #f1f5f9;
-  --sidebar-primary: #FACC15;
-  --sidebar-primary-foreground: #0a0a0a;
-  --sidebar-accent: #242424;
-  --sidebar-accent-foreground: #f1f5f9;
-  --sidebar-border: #2a2a2a;
-  --sidebar-ring: #FACC15;
 
-  /* ── Jan Samadhan Theme Variables (Dark) ── */
-  --app-bg: #0a0a0a;
-  --surface: #1a1a1a;
-  --surface-elevated: #242424;
-  --brand: #FACC15;
-  --brand-hover: #EAB308;
-  --brand-fg: #0a0a0a;
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --border-color: #2a2a2a;
-  --border-subtle: #1f1f1f;
-  --sidebar-bg: #111111;
-  --btn-primary: #FACC15;
-  --btn-primary-fg: #0a0a0a;
-  --chart-grid-color: #2a2a2a;
-  --skeleton: #2a2a2a;
-  --hover-row: rgba(36, 36, 36, 0.5);
-  --input-bg: #1a1a1a;
-  --overlay-bg: rgba(0, 0, 0, 0.6);
-  --icon-bg: #242424;
-  --stat-bg: #242424;
-  --kanban-drag: rgba(36, 36, 36, 0.8);
-  --resolved-row: rgba(6, 78, 59, 0.2);
-  --assigned-row: rgba(30, 58, 138, 0.2);
-  --escalated-row: rgba(127, 29, 29, 0.2);
-}
 
 @layer base {
   * {

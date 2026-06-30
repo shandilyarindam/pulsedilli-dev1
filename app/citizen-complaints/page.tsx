@@ -1,26 +1,142 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
-import { 
-  Download, Filter, Search, MoreHorizontal, Eye, 
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import {
+  Download, Filter, Search, MoreHorizontal, Eye,
   ChevronDown, ChevronLeft, ChevronRight, TrendingUp, TrendingDown,
-  Droplet, Zap, Car, Trash2, ShieldAlert
+  Droplet, Zap, Car, Trash2, ShieldAlert, RefreshCw, AlertTriangle
 } from "lucide-react";
+import {
+  getAggregateMetrics,
+  getComplaintsList,
+  type ComplaintListRow,
+} from "@/services/complaints";
+
+/* ─────────────────────────────────────────────────────────
+   Category icon helpers
+───────────────────────────────────────────────────────── */
+type CatConfig = {
+  icon: React.ReactNode;
+  label: string;
+  bg: string;
+  color: string;
+};
+
+function getCategoryConfig(name: string | null, dept: string | null): CatConfig {
+  const key = (name || dept || "").toLowerCase();
+
+  if (key.includes("water") || dept === "DJB Water")
+    return { icon: <Droplet className="w-4 h-4" />, label: name || "Water Supply", bg: "bg-blue-100", color: "text-blue-600" };
+  if (key.includes("electric") || key.includes("bses") || key.includes("tpddl") || dept === "BSES/TPDDL")
+    return { icon: <Zap className="w-4 h-4" />, label: name || "Electricity", bg: "bg-amber-100", color: "text-amber-600" };
+  if (key.includes("road") || key.includes("pwd") || dept === "PWD")
+    return { icon: <Car className="w-4 h-4" />, label: name || "Roads", bg: "bg-slate-100", color: "text-slate-600" };
+  if (key.includes("sanit") || key.includes("sewage") || key.includes("drainage") || key.includes("garbage") || key.includes("waste") || key.includes("mcd") || dept === "MCD" || dept === "DJB Drainage")
+    return { icon: <Trash2 className="w-4 h-4" />, label: name || "Sanitation", bg: "bg-emerald-100", color: "text-emerald-600" };
+  if (key.includes("traffic"))
+    return { icon: <ShieldAlert className="w-4 h-4" />, label: name || "Traffic", bg: "bg-indigo-100", color: "text-indigo-600" };
+
+  return { icon: <ShieldAlert className="w-4 h-4" />, label: name || "General", bg: "bg-indigo-100", color: "text-indigo-600" };
+}
+
+/* ─────────────────────────────────────────────────────────
+   Priority Badge
+───────────────────────────────────────────────────────── */
+function PriorityBadge({ severity }: { severity: string | null }) {
+  const s = (severity || "low").toLowerCase();
+  const map: Record<string, string> = {
+    critical: "bg-rose-100 text-rose-700 border-rose-200",
+    high:     "bg-orange-100 text-orange-700 border-orange-200",
+    medium:   "bg-blue-100 text-blue-700 border-blue-200",
+    low:      "bg-slate-100 text-slate-600 border-slate-200",
+  };
+  const label = s.charAt(0).toUpperCase() + s.slice(1);
+  return (
+    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${map[s] || map["low"]}`}>
+      {label}
+    </span>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+   Status Badge
+───────────────────────────────────────────────────────── */
+function StatusBadge({ status }: { status: string | null }) {
+  const s = (status || "").toLowerCase();
+  const map: Record<string, { cls: string; label: string }> = {
+    submitted:   { cls: "bg-slate-100 text-slate-600 border-slate-200",     label: "Pending" },
+    open:        { cls: "bg-amber-100 text-amber-700 border-amber-200",      label: "Pending" },
+    in_progress: { cls: "bg-amber-100 text-amber-700 border-amber-200",      label: "In Progress" },
+    resolved:    { cls: "bg-emerald-100 text-emerald-700 border-emerald-200", label: "Resolved" },
+  };
+  const { cls, label } = map[s] || map["submitted"];
+  return (
+    <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+   Format date/time
+───────────────────────────────────────────────────────── */
+function formatReportedOn(ts: string | null): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const date = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const time = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+  return `Reported on ${date}, ${time}`;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Officer initials avatar
+───────────────────────────────────────────────────────── */
+function OfficerAvatar({ name }: { name: string }) {
+  const parts = name.trim().split(" ");
+  const initials = parts.length >= 2
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : name.substring(0, 2).toUpperCase();
+  return (
+    <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs uppercase overflow-hidden shrink-0">
+      {initials}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+   Skeleton Row
+───────────────────────────────────────────────────────── */
+function SkeletonRow() {
+  return (
+    <tr className="border-b border-slate-100 animate-pulse">
+      <td className="px-4 py-4 text-center"><div className="h-4 w-4 rounded bg-slate-200 mx-auto" /></td>
+      {[40, 90, 64, 180, 80, 60, 60, 110, 48].map((w, i) => (
+        <td key={i} className="px-4 py-4">
+          <div className="h-4 rounded bg-slate-200" style={{ width: w }} />
+        </td>
+      ))}
+    </tr>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+   Page
+───────────────────────────────────────────────────────── */
+const PAGE_SIZE = 10;
 
 export default function CitizenComplaintsPage() {
+  /* ── Area dropdown state ── */
   const [areaDropdownOpen, setAreaDropdownOpen] = useState(false);
   const [areaSearch, setAreaSearch] = useState("");
-  const [selectedArea, setSelectedArea] = useState("Area");
-  
+  const [selectedArea, setSelectedArea] = useState("All Districts");
+  const areaRef = useRef<HTMLDivElement>(null);
+
   const areas = [
-    "Central Delhi", "East Delhi", "New Delhi", "North Delhi", 
-    "North East Delhi", "North West Delhi", "Outer North Delhi", "Shahdara", 
+    "Central Delhi", "East Delhi", "New Delhi", "North Delhi",
+    "North East Delhi", "North West Delhi", "Outer North Delhi", "Shahdara",
     "South Delhi", "South East Delhi", "South West Delhi", "West Delhi"
   ];
-  
   const filteredAreas = areas.filter(a => a.toLowerCase().includes(areaSearch.toLowerCase()));
-
-  const areaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -32,84 +148,241 @@ export default function CitizenComplaintsPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  /* ── Supabase: KPI metrics ── */
+  const [metrics, setMetrics] = useState({
+    total: 0, pending: 0, inProgress: 0, resolved: 0,
+    avgResolutionDays: null as number | null,
+  });
+  const [metricsLoading, setMetricsLoading] = useState(true);
+
+  /* ── Supabase: complaints table ── */
+  const [allComplaints, setAllComplaints] = useState<ComplaintListRow[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [tableLoading, setTableLoading] = useState(true);
+  const [tableError, setTableError] = useState<string | null>(null);
+
+  /* ── Filter state ── */
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+
+  /* ── Fetch metrics ── */
+  const fetchMetrics = useCallback(async () => {
+    setMetricsLoading(true);
+    try {
+      const agg = await getAggregateMetrics();
+      setMetrics({
+        total: agg.total,
+        pending: agg.submitted + agg.open,
+        inProgress: agg.inProgress,
+        resolved: agg.resolved,
+        avgResolutionDays: agg.avgResolutionDays,
+      });
+    } catch (e) {
+      console.error("Metrics fetch failed:", e);
+    } finally {
+      setMetricsLoading(false);
+    }
+  }, []);
+
+  /* ── Fetch complaints ── */
+  const fetchComplaints = useCallback(async () => {
+    setTableLoading(true);
+    setTableError(null);
+    try {
+      const res = await getComplaintsList(1, 200);
+      setAllComplaints((res.data || []) as ComplaintListRow[]);
+      setTotalCount(res.count || 0);
+    } catch (e) {
+      console.error("Complaints fetch failed:", e);
+      setTableError("Could not load complaints. Please retry.");
+    } finally {
+      setTableLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMetrics();
+    fetchComplaints();
+  }, [fetchMetrics, fetchComplaints]);
+
+  /* ── Client filtering ── */
+  const filtered = allComplaints.filter(c => {
+    if (statusFilter !== "all" && c.status !== statusFilter) return false;
+    if (priorityFilter !== "all" && (c.severity || "").toLowerCase() !== priorityFilter) return false;
+    if (selectedArea !== "All Districts" && (c.city || "").toLowerCase() !== selectedArea.toLowerCase()) return false;
+    return true;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  // Reset to page 1 when filters change
+  useEffect(() => { setCurrentPage(1); }, [statusFilter, priorityFilter, selectedArea]);
+
+  /* ── CSV Export ── */
+  function exportCSV() {
+    const header = ["Complaint ID", "Category", "Title", "Area/District", "Priority", "Status", "Assigned Officer", "Role", "Reported On"];
+    const rows = filtered.map(c => [
+      c.ticket_id || c.id,
+      c.categories?.name || "General",
+      `"${(c.title || "").replace(/"/g, '""')}"`,
+      c.city || "Delhi",
+      c.severity || "low",
+      c.status || "",
+      c.profiles?.full_name || "Unassigned",
+      c.profiles?.role || c.categories?.department || "",
+      c.created_at ? new Date(c.created_at).toLocaleString("en-IN") : "",
+    ]);
+    const csv = [header.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Delhi_Complaints_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /* ── Computed KPI display values ── */
+  const avgLabel = metrics.avgResolutionDays !== null
+    ? metrics.avgResolutionDays.toFixed(1)
+    : "—";
+
+  /* ── Pagination helpers ── */
+  const startRow = filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const endRow = Math.min(currentPage * PAGE_SIZE, filtered.length);
+
+  function getPaginationPages() {
+    const pages: (number | "...")[] = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push("...");
+      for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) pages.push(i);
+      if (currentPage < totalPages - 2) pages.push("...");
+      pages.push(totalPages);
+    }
+    return pages;
+  }
+
+  /* ─────────────────────────────────────────────────────
+     Render
+  ───────────────────────────────────────────────────── */
   return (
-    <div className="p-4 md:p-6 lg:p-8 h-full overflow-y-auto overflow-x-hidden w-full bg-[#F8FAFC] dark:bg-[#0a0a0a] text-slate-900 dark:text-slate-100">
+    <div className="p-4 md:p-6 lg:p-8 h-full overflow-y-auto overflow-x-hidden w-full bg-[#F8FAFC] text-slate-900">
       <div className="max-w-[1600px] mx-auto space-y-6">
-        
-        {/* Header Section */}
+
+        {/* ── Header ── */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Complaints</h1>
+            <h1 className="text-2xl font-bold text-slate-900">Complaints</h1>
             <p className="text-sm text-slate-500 mt-1">Manage and track public grievances across Delhi</p>
           </div>
           <div className="flex items-center gap-3">
-            <button className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition">
+            <button
+              onClick={() => { fetchMetrics(); fetchComplaints(); }}
+              className="flex items-center gap-2 bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition"
+            >
+              <RefreshCw className="w-4 h-4" /> Refresh
+            </button>
+            <button
+              onClick={exportCSV}
+              className="flex items-center gap-2 bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition"
+            >
               <Download className="w-4 h-4" /> Export as PDF
             </button>
           </div>
         </div>
 
-        {/* KPI Cards */}
+        {/* ── KPI Cards ── */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          {/* KPI 1 */}
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+          {/* Total */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
             <span className="text-sm font-semibold text-slate-500 mb-1">Total Complaints</span>
             <div className="flex items-end gap-2 mb-2">
-              <span className="text-3xl font-bold text-slate-900 dark:text-white">24,592</span>
+              {metricsLoading
+                ? <div className="h-9 w-24 rounded bg-slate-200 animate-pulse" />
+                : <span className="text-3xl font-bold text-slate-900">{metrics.total.toLocaleString()}</span>
+              }
             </div>
-            <div className="flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-500">
-              <TrendingUp className="w-3 h-3" /> 12% vs last month
+            <div className="flex items-center gap-1 text-xs font-medium text-emerald-600">
+              <TrendingUp className="w-3 h-3" /> Live from database
             </div>
           </div>
-          {/* KPI 2 */}
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+
+          {/* Pending */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
             <span className="text-sm font-semibold text-slate-500 mb-1">Pending</span>
             <div className="flex items-end gap-2 mb-2">
-              <span className="text-3xl font-bold text-slate-900 dark:text-white">3,421</span>
+              {metricsLoading
+                ? <div className="h-9 w-20 rounded bg-slate-200 animate-pulse" />
+                : <span className="text-3xl font-bold text-slate-900">{metrics.pending.toLocaleString()}</span>
+              }
             </div>
-            <div className="flex items-center gap-1 text-xs font-medium text-rose-600 dark:text-rose-500">
-              <TrendingUp className="w-3 h-3" /> 5% vs last month
+            <div className="flex items-center gap-1 text-xs font-medium text-rose-600">
+              <TrendingUp className="w-3 h-3" /> Awaiting action
             </div>
           </div>
-          {/* KPI 3 */}
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+
+          {/* In Progress */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
             <span className="text-sm font-semibold text-slate-500 mb-1">In Progress</span>
             <div className="flex items-end gap-2 mb-2">
-              <span className="text-3xl font-bold text-slate-900 dark:text-white">1,845</span>
+              {metricsLoading
+                ? <div className="h-9 w-20 rounded bg-slate-200 animate-pulse" />
+                : <span className="text-3xl font-bold text-slate-900">{metrics.inProgress.toLocaleString()}</span>
+              }
             </div>
-            <div className="flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-              <TrendingDown className="w-3 h-3" /> 2% vs last month
+            <div className="flex items-center gap-1 text-xs font-medium text-slate-500">
+              <TrendingDown className="w-3 h-3" /> Being resolved
             </div>
           </div>
-          {/* KPI 4 */}
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+
+          {/* Resolved */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
             <span className="text-sm font-semibold text-slate-500 mb-1">Resolved</span>
             <div className="flex items-end gap-2 mb-2">
-              <span className="text-3xl font-bold text-slate-900 dark:text-white">19,326</span>
+              {metricsLoading
+                ? <div className="h-9 w-20 rounded bg-slate-200 animate-pulse" />
+                : <span className="text-3xl font-bold text-slate-900">{metrics.resolved.toLocaleString()}</span>
+              }
             </div>
-            <div className="flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-500">
-              <TrendingUp className="w-3 h-3" /> 18% vs last month
+            <div className="flex items-center gap-1 text-xs font-medium text-emerald-600">
+              <TrendingUp className="w-3 h-3" /> Closed successfully
             </div>
           </div>
-          {/* KPI 5 */}
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col">
+
+          {/* Avg. Resolution Time */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
             <span className="text-sm font-semibold text-slate-500 mb-1">Avg. Resolution Time</span>
             <div className="flex items-end gap-2 mb-2">
-              <span className="text-3xl font-bold text-slate-900 dark:text-white">2.4<span className="text-lg text-slate-500 font-semibold ml-1">days</span></span>
+              {metricsLoading
+                ? <div className="h-9 w-24 rounded bg-slate-200 animate-pulse" />
+                : <span className="text-3xl font-bold text-slate-900">
+                    {avgLabel}<span className="text-lg text-slate-500 font-semibold ml-1">days</span>
+                  </span>
+              }
             </div>
-            <div className="flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-500">
-              <TrendingDown className="w-3 h-3" /> 0.3 days vs last month
+            <div className="flex items-center gap-1 text-xs font-medium text-emerald-600">
+              <TrendingDown className="w-3 h-3" /> From resolved tickets
             </div>
           </div>
         </div>
 
-        {/* Filters and Table Section */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm flex flex-col">
-          
+        {/* ── Filters + Table ── */}
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col">
+
           {/* Filter Bar */}
-          <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center gap-3">
+          <div className="p-4 border-b border-slate-200 flex flex-wrap items-center gap-3">
+
+            {/* Department / Category (static — filtering by category not in current schema columns) */}
             <div className="relative">
-              <select className="appearance-none bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 py-2 pl-3 pr-8 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <select
+                className="appearance-none bg-slate-50 border border-slate-300 text-slate-700 py-2 pl-3 pr-8 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                defaultValue="Department"
+              >
                 <option>Department</option>
                 <option>Water Supply</option>
                 <option>PWD</option>
@@ -117,77 +390,88 @@ export default function CitizenComplaintsPage() {
               </select>
               <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
             </div>
-            
-            {/* Custom Area Dropdown */}
+
+            {/* Area Dropdown */}
             <div className="relative" ref={areaRef}>
-              <button 
+              <button
                 onClick={() => setAreaDropdownOpen(!areaDropdownOpen)}
-                className="flex items-center justify-between w-40 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 py-2 pl-3 pr-3 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex items-center justify-between w-44 bg-slate-50 border border-slate-300 text-slate-700 py-2 pl-3 pr-3 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <span className="truncate">{selectedArea}</span>
                 <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
               </button>
-              
               {areaDropdownOpen && (
-                <div className="absolute z-10 mt-1 w-56 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden">
-                  <div className="p-2 border-b border-slate-100 dark:border-slate-700 relative">
+                <div className="absolute z-10 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
+                  <div className="p-2 border-b border-slate-100 relative">
                     <Search className="w-4 h-4 text-slate-400 absolute left-4 top-2.5" />
-                    <input 
-                      type="text" 
-                      placeholder="Search area..." 
-                      className="w-full pl-8 pr-2 py-1.5 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 dark:text-slate-200"
+                    <input
+                      type="text"
+                      placeholder="Search district..."
+                      className="w-full pl-8 pr-2 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700"
                       value={areaSearch}
                       onChange={(e) => setAreaSearch(e.target.value)}
                       onClick={(e) => e.stopPropagation()}
                     />
                   </div>
                   <div className="max-h-48 overflow-y-auto py-1">
-                    <button 
-                      className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
-                      onClick={() => { setSelectedArea("Area"); setAreaDropdownOpen(false); setAreaSearch(""); }}
+                    <button
+                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition"
+                      onClick={() => { setSelectedArea("District"); setAreaDropdownOpen(false); setAreaSearch(""); }}
                     >
-                      All Areas
+                      All Districts
                     </button>
                     {filteredAreas.map(area => (
-                      <button 
+                      <button
                         key={area}
-                        className="w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
+                        className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition"
                         onClick={() => { setSelectedArea(area); setAreaDropdownOpen(false); setAreaSearch(""); }}
                       >
                         {area}
                       </button>
                     ))}
                     {filteredAreas.length === 0 && (
-                      <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400 text-center">No areas found</div>
+                      <div className="px-4 py-2 text-sm text-slate-500 text-center">No areas found</div>
                     )}
                   </div>
                 </div>
               )}
             </div>
 
+            {/* Status filter */}
             <div className="relative">
-              <select className="appearance-none bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 py-2 pl-3 pr-8 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option>Status</option>
-                <option>Pending</option>
-                <option>In Progress</option>
-                <option>Resolved</option>
+              <select
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value)}
+                className="appearance-none bg-slate-50 border border-slate-300 text-slate-700 py-2 pl-3 pr-8 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Status</option>
+                <option value="submitted">Pending</option>
+                <option value="open">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="resolved">Resolved</option>
               </select>
               <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
             </div>
 
+            {/* Priority filter */}
             <div className="relative">
-              <select className="appearance-none bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 py-2 pl-3 pr-8 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option>Priority</option>
-                <option>Critical</option>
-                <option>High</option>
-                <option>Medium</option>
-                <option>Low</option>
+              <select
+                value={priorityFilter}
+                onChange={e => setPriorityFilter(e.target.value)}
+                className="appearance-none bg-slate-50 border border-slate-300 text-slate-700 py-2 pl-3 pr-8 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Priority</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
               </select>
               <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
             </div>
 
+            {/* Date Range (static UI) */}
             <div className="relative">
-              <select className="appearance-none bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 py-2 pl-3 pr-8 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <select className="appearance-none bg-slate-50 border border-slate-300 text-slate-700 py-2 pl-3 pr-8 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option>Date Range</option>
                 <option>Last 7 Days</option>
                 <option>Last 30 Days</option>
@@ -196,270 +480,148 @@ export default function CitizenComplaintsPage() {
               <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
             </div>
 
-            <div className="flex-grow"></div>
+            <div className="flex-grow" />
 
-            <button className="flex items-center gap-2 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition">
+            <button className="flex items-center gap-2 text-slate-600 bg-white border border-slate-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-50 transition">
               <Filter className="w-4 h-4" /> More Filters
             </button>
-            <button className="bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 dark:hover:bg-white transition">
+            <button className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition">
               Apply Filters
             </button>
           </div>
 
+          {/* Table Error */}
+          {tableError && (
+            <div className="m-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                {tableError}
+              </div>
+              <button
+                onClick={fetchComplaints}
+                className="rounded border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
           {/* Data Table */}
           <div className="overflow-x-auto w-full">
             <table className="w-full text-left whitespace-normal break-words">
-              <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3 w-10 text-center">
-                    <input type="checkbox" className="rounded border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-blue-600 focus:ring-blue-500" />
+                    <input type="checkbox" className="rounded border-slate-300 bg-white text-blue-600 focus:ring-blue-500" />
                   </th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Complaint ID</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Category</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Complaint Details</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Area / District</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Priority</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Assigned Officer</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-center">Actions</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Complaint ID</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Complaint Details</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Area / District</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Priority</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Assigned Officer</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {/* Row 1 */}
-                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                  <td className="px-4 py-4 text-center">
-                    <input type="checkbox" className="rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500" />
-                  </td>
-                  <td className="px-4 py-4 font-medium text-slate-900 dark:text-slate-100">#C-82931</td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                        <Droplet className="w-4 h-4" />
-                      </div>
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Water Supply</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Severe water logging on Main Rd</span>
-                      <span className="text-xs text-slate-500 dark:text-slate-400">Reported on 12 May 2026, 09:30 AM</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-sm text-slate-700 dark:text-slate-300">South West Delhi</td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50">Critical</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50">In Progress</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-xs uppercase overflow-hidden">
-                        RK
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Rajesh Kumar</span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">Junior Engineer, DJB</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-center">
-                    <div className="flex justify-center items-center gap-2">
-                      <button className="text-slate-400 hover:text-blue-600 transition"><Eye className="w-4 h-4" /></button>
-                      <button className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition"><MoreHorizontal className="w-4 h-4" /></button>
-                    </div>
-                  </td>
-                </tr>
+              <tbody className="divide-y divide-slate-100">
+                {tableLoading ? (
+                  Array.from({ length: PAGE_SIZE }).map((_, i) => <SkeletonRow key={i} />)
+                ) : paginated.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-14 text-center text-slate-400 text-sm">
+                      No complaints match your current filters.
+                    </td>
+                  </tr>
+                ) : (
+                  paginated.map((c) => {
+                    const cat = getCategoryConfig(c.categories?.name ?? null, c.categories?.department ?? null);
+                    const ticketDisplay = `#${(c.ticket_id || c.id).substring(0, 6).toUpperCase()}`;
 
-                {/* Row 2 */}
-                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                  <td className="px-4 py-4 text-center">
-                    <input type="checkbox" className="rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500" />
-                  </td>
-                  <td className="px-4 py-4 font-medium text-slate-900 dark:text-slate-100">#C-82930</td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600 dark:text-amber-400">
-                        <Zap className="w-4 h-4" />
-                      </div>
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Electricity</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Power outage for 6+ hours</span>
-                      <span className="text-xs text-slate-500 dark:text-slate-400">Reported on 11 May 2026, 11:15 PM</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-sm text-slate-700 dark:text-slate-300">East Delhi</td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800/50">High</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50">Resolved</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-xs uppercase overflow-hidden">
-                        MS
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Meera Singh</span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">Field Supervisor, BSES</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-center">
-                    <div className="flex justify-center items-center gap-2">
-                      <button className="text-slate-400 hover:text-blue-600 transition"><Eye className="w-4 h-4" /></button>
-                      <button className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition"><MoreHorizontal className="w-4 h-4" /></button>
-                    </div>
-                  </td>
-                </tr>
+                    return (
+                      <tr key={c.id} className="hover:bg-slate-50 transition">
+                        <td className="px-4 py-4 text-center">
+                          <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                        </td>
 
-                {/* Row 3 */}
-                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                  <td className="px-4 py-4 text-center">
-                    <input type="checkbox" className="rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500" />
-                  </td>
-                  <td className="px-4 py-4 font-medium text-slate-900 dark:text-slate-100">#C-82929</td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400">
-                        <Car className="w-4 h-4" />
-                      </div>
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Roads</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Deep potholes near market</span>
-                      <span className="text-xs text-slate-500 dark:text-slate-400">Reported on 10 May 2026, 04:20 PM</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-sm text-slate-700 dark:text-slate-300">New Delhi</td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50">Medium</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">Pending</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 flex items-center justify-center font-bold text-xs uppercase overflow-hidden">
-                        --
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-slate-500 dark:text-slate-400 italic">Unassigned</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-center">
-                    <div className="flex justify-center items-center gap-2">
-                      <button className="text-slate-400 hover:text-blue-600 transition"><Eye className="w-4 h-4" /></button>
-                      <button className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition"><MoreHorizontal className="w-4 h-4" /></button>
-                    </div>
-                  </td>
-                </tr>
+                        {/* Complaint ID */}
+                        <td className="px-4 py-4 font-medium text-slate-900">{ticketDisplay}</td>
 
-                {/* Row 4 */}
-                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                  <td className="px-4 py-4 text-center">
-                    <input type="checkbox" className="rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500" />
-                  </td>
-                  <td className="px-4 py-4 font-medium text-slate-900 dark:text-slate-100">#C-82928</td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                        <Trash2 className="w-4 h-4" />
-                      </div>
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Sanitation</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Garbage not collected for 3 days</span>
-                      <span className="text-xs text-slate-500 dark:text-slate-400">Reported on 09 May 2026, 08:00 AM</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-sm text-slate-700 dark:text-slate-300">North West Delhi</td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/50">Medium</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50">Resolved</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-xs uppercase overflow-hidden">
-                        AK
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Amit Kumar</span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">Sanitation Inspector, MCD</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-center">
-                    <div className="flex justify-center items-center gap-2">
-                      <button className="text-slate-400 hover:text-blue-600 transition"><Eye className="w-4 h-4" /></button>
-                      <button className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition"><MoreHorizontal className="w-4 h-4" /></button>
-                    </div>
-                  </td>
-                </tr>
+                        {/* Category + Icon */}
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-8 h-8 rounded-full ${cat.bg} flex items-center justify-center ${cat.color}`}>
+                              {cat.icon}
+                            </div>
+                            <span className="text-sm font-medium text-slate-700">{cat.label}</span>
+                          </div>
+                        </td>
 
-                {/* Row 5 */}
-                <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition">
-                  <td className="px-4 py-4 text-center">
-                    <input type="checkbox" className="rounded border-slate-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500" />
-                  </td>
-                  <td className="px-4 py-4 font-medium text-slate-900 dark:text-slate-100">#C-82927</td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                        <ShieldAlert className="w-4 h-4" />
-                      </div>
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Traffic</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Broken traffic light at crossing</span>
-                      <span className="text-xs text-slate-500 dark:text-slate-400">Reported on 09 May 2026, 07:15 AM</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-sm text-slate-700 dark:text-slate-300">South East Delhi</td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50">Critical</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50">In Progress</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-xs uppercase overflow-hidden">
-                        VN
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Vikram Negi</span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">Traffic Police</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-center">
-                    <div className="flex justify-center items-center gap-2">
-                      <button className="text-slate-400 hover:text-blue-600 transition"><Eye className="w-4 h-4" /></button>
-                      <button className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition"><MoreHorizontal className="w-4 h-4" /></button>
-                    </div>
-                  </td>
-                </tr>
+                        {/* Complaint Details */}
+                        <td className="px-4 py-4">
+                          <div className="flex flex-col max-w-[260px]">
+                            <span className="text-sm font-semibold text-slate-900 line-clamp-2">
+                              {c.title || "Complaint reported"}
+                            </span>
+                            <span className="text-xs text-slate-500 mt-0.5">
+                              {formatReportedOn(c.created_at)}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Area / District */}
+                        <td className="px-4 py-4 text-sm text-slate-700">{c.city || "Delhi"}</td>
+
+                        {/* Priority */}
+                        <td className="px-4 py-4">
+                          <PriorityBadge severity={c.severity} />
+                        </td>
+
+                        {/* Status */}
+                        <td className="px-4 py-4">
+                          <StatusBadge status={c.status} />
+                        </td>
+
+                        {/* Assigned Officer */}
+                        <td className="px-4 py-4">
+                          {c.profiles?.full_name ? (
+                            <div className="flex items-center gap-3">
+                              <OfficerAvatar name={c.profiles.full_name} />
+                              <div className="flex flex-col">
+                                <span className="text-sm font-semibold text-slate-900">{c.profiles.full_name}</span>
+                                <span className="text-xs text-slate-500">
+                                  {c.profiles.role || c.categories?.department || "Officer"}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-xs">
+                                --
+                              </div>
+                              <span className="text-sm font-semibold text-slate-500 italic">Unassigned</span>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-4 py-4 text-center">
+                          <div className="flex justify-center items-center gap-2">
+                            <button className="text-slate-400 hover:text-blue-600 transition"><Eye className="w-4 h-4" /></button>
+                            <button className="text-slate-400 hover:text-slate-700 transition"><MoreHorizontal className="w-4 h-4" /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
 
-          {/* Footer (Pagination) */}
-          <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+          {/* ── Pagination Footer ── */}
+          <div className="p-4 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-slate-600">
               <span>Rows per page:</span>
               <select className="bg-transparent font-medium focus:outline-none cursor-pointer">
                 <option>10</option>
@@ -467,19 +629,41 @@ export default function CitizenComplaintsPage() {
                 <option>50</option>
               </select>
             </div>
-            <div className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-400">
-              <span className="mr-4">1-10 of 24,592</span>
-              <button className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition">
+            <div className="flex items-center gap-1 text-sm text-slate-600">
+              <span className="mr-4">
+                {tableLoading ? "Loading…" : `${startRow}–${endRow} of ${filtered.length.toLocaleString()}`}
+              </span>
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
                 <ChevronLeft className="w-5 h-5" />
               </button>
               <div className="flex items-center gap-1">
-                <button className="w-8 h-8 rounded-md bg-blue-600 text-white font-medium flex items-center justify-center">1</button>
-                <button className="w-8 h-8 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium flex items-center justify-center transition">2</button>
-                <button className="w-8 h-8 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium flex items-center justify-center transition">3</button>
-                <span className="px-1 text-slate-400">...</span>
-                <button className="w-10 h-8 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium flex items-center justify-center transition">2459</button>
+                {getPaginationPages().map((p, i) =>
+                  p === "..." ? (
+                    <span key={`ellipsis-${i}`} className="px-1 text-slate-400">...</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setCurrentPage(p as number)}
+                      className={`w-8 h-8 rounded-md font-medium flex items-center justify-center transition text-sm ${
+                        currentPage === p
+                          ? "bg-blue-600 text-white"
+                          : "hover:bg-slate-100 text-slate-700"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
               </div>
-              <button className="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition">
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1 rounded hover:bg-slate-100 text-slate-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
                 <ChevronRight className="w-5 h-5" />
               </button>
             </div>
