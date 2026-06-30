@@ -131,7 +131,7 @@ const Sidebar = memo(function Sidebar() {
         {/* Logo row */}
         <div className="shrink-0 flex items-center border-b border-[#E8EDF5] py-5 overflow-hidden"
           style={{ paddingLeft: isExpanded ? "1rem" : "0.5rem", paddingRight: isExpanded ? "1rem" : "0.5rem" }}>
-          <img src="/pulsedilli_logo.png" alt="PulseDilli Logo" className="h-10 w-auto max-w-[40px] object-contain shrink-0" />
+          <img src="/pulsedilli_logo-removebg.png" alt="PulseDilli Logo" className="h-10 w-auto max-w-[40px] object-contain shrink-0" />
           <span
             className={`ml-3 flex flex-col whitespace-nowrap overflow-hidden
               transition-all duration-300 ease-in-out
@@ -167,7 +167,7 @@ const Sidebar = memo(function Sidebar() {
         {/* Logo + close */}
         <div className="shrink-0 flex items-center justify-between border-b border-[#E8EDF5] py-5 px-4">
           <div className="flex items-center gap-3">
-            <img src="/pulsedilli_logo.png" alt="PulseDilli Logo" className="h-10 w-auto max-w-[40px] object-contain shrink-0" />
+            <img src="/pulsedilli_logo-removebg.png" alt="PulseDilli Logo" className="h-10 w-auto max-w-[40px] object-contain shrink-0" />
             <span className="text-[18px] font-black tracking-tight text-[#0F172A]">PulseDilli</span>
           </div>
           <button

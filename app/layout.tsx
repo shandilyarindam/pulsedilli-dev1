@@ -16,9 +16,9 @@ export const metadata: Metadata = {
   title: "PulseDilli",
   description: "The real time pulse of Delhi",
   icons: {
-    icon: "/emblem.png",
-    apple: "/emblem.png",
-    shortcut: "/emblem.png",
+    icon: "/pulsedilli_logo-removebg.png",
+    apple: "/pulsedilli_logo-removebg.png",
+    shortcut: "/pulsedilli_logo-removebg.png",
   },
 };
 
