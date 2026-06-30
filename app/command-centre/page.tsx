@@ -10,6 +10,7 @@ type Status = 'Open' | 'In Progress' | 'Resolved';
 
 interface Complaint {
   id: string;
+  ticket_id: string;
   urgency: Urgency;
   summary: string;
   location: string;
@@ -20,15 +21,7 @@ interface Complaint {
   officer_email?: string;
 }
 
-const initialComplaints: Complaint[] = [
-  { id: 'C-1001', urgency: 'Critical', summary: 'Severe water logging on Main Rd', location: 'South West Delhi', ward: 'Ward 42', category: 'Water & Drainage', status: 'Open', notes: '', officer_email: 'arindam.shandilya@gmail.com' },
-  { id: 'C-1002', urgency: 'High', summary: 'Power outage for 6+ hours', location: 'East Delhi', ward: 'Ward 18', category: 'Electricity', status: 'In Progress', notes: 'BSES team dispatched', officer_email: 'arindam.shandilya@gmail.com' },
-  { id: 'C-1003', urgency: 'Medium', summary: 'Deep potholes near market', location: 'New Delhi', ward: 'Ward 5', category: 'Roads & Infrastructure', status: 'Open', notes: '', officer_email: 'arindam.shandilya@gmail.com' },
-  { id: 'C-1004', urgency: 'Low', summary: 'Garbage not collected for 3 days', location: 'North West Delhi', ward: 'Ward 67', category: 'Sanitation', status: 'Resolved', notes: 'MCD truck cleared the area', officer_email: 'arindam.shandilya@gmail.com' },
-  { id: 'C-1005', urgency: 'Critical', summary: 'Broken traffic light at crossing', location: 'South East Delhi', ward: 'Ward 31', category: 'Roads & Infrastructure', status: 'Open', notes: '', officer_email: 'arindam.shandilya@gmail.com' },
-  { id: 'C-1006', urgency: 'High', summary: 'Sewer line overflow near school', location: 'Central Delhi', ward: 'Ward 9', category: 'Water & Drainage', status: 'In Progress', notes: 'DJB engineers assessing', officer_email: 'arindam.shandilya@gmail.com' },
-  { id: 'C-1007', urgency: 'Medium', summary: 'Stray animal menace', location: 'Outer North Delhi', ward: 'Ward 74', category: 'Animal Control', status: 'Open', notes: '', officer_email: 'arindam.shandilya@gmail.com' },
-];
+const initialComplaints: Complaint[] = [];
 
 const urgencyStyles: Record<Urgency, string> = {
   Critical: 'bg-red-500 text-white',
@@ -134,7 +127,7 @@ function InterventionModal({ complaint, onClose, onMarkResolved }: ModalProps) {
           <div className="grid grid-cols-2 gap-3 mb-5">
             <div className="bg-[#F8FAFC] rounded-xl p-3 border border-[#E8EDF5]">
               <p className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-wide mb-1">Complaint ID</p>
-              <p className="text-sm font-bold text-[#0F172A]">{complaint.id}</p>
+              <p className="text-sm font-bold text-[#0F172A]">{complaint.ticket_id || complaint.id}</p>
             </div>
             <div className="bg-[#F8FAFC] rounded-xl p-3 border border-[#E8EDF5]">
               <p className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-wide mb-1">Category</p>
@@ -215,10 +208,43 @@ export default function CommandCentrePage() {
   useEffect(() => { setIsMounted(true); }, []);
 
   useEffect(() => {
-    supabase.from('complaints').select('*').then(({ data, error }) => {
-      if (error) { console.error('Error fetching complaints:', error); return; }
-      if (data && data.length > 0) setComplaints(data);
-    });
+    async function loadData() {
+      try {
+        const { getKanbanComplaints } = await import('@/services/complaints');
+        const data = await getKanbanComplaints();
+        
+        const mapSeverity = (severity: string) => {
+           if (!severity) return 'Medium';
+           const s = severity.toLowerCase();
+           if (s === 'critical') return 'Critical';
+           if (s === 'high') return 'High';
+           if (s === 'low') return 'Low';
+           return 'Medium';
+        };
+
+        const mapComplaint = (c: any, status: Status): Complaint => ({
+           id: c.id,
+           ticket_id: c.ticket_id || c.id,
+           urgency: mapSeverity(c.severity) as Urgency,
+           summary: c.title || 'No Title',
+           location: c.city || 'Delhi',
+           category: c.categories?.department || c.categories?.name || 'General',
+           status,
+           notes: c.notes || '',
+        });
+
+        const allComplaints = [
+          ...data.submitted.map(c => mapComplaint(c, 'Open')),
+          ...data.in_progress.map(c => mapComplaint(c, 'In Progress')),
+          ...data.resolved.map(c => mapComplaint(c, 'Resolved'))
+        ];
+        
+        setComplaints(allComplaints);
+      } catch (err) {
+        console.error('Error fetching complaints:', err);
+      }
+    }
+    loadData();
   }, []);
 
   const updateStatus = async (id: string, newStatus: Status) => {
@@ -341,7 +367,7 @@ export default function CommandCentrePage() {
                                     <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-black tracking-wider ${urgencyStyles[complaint.urgency]}`}>
                                       {complaint.urgency === 'Critical' ? 'URGENT' : complaint.urgency.toUpperCase()}
                                     </span>
-                                    <span className="text-[10px] font-semibold text-slate-400 font-mono">{complaint.id}</span>
+                                    <span className="text-[10px] font-semibold text-slate-400 font-mono">{complaint.ticket_id || complaint.id}</span>
                                   </div>
 
                                   {/* Summary */}

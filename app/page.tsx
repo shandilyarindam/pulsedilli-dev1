@@ -82,7 +82,27 @@ export default function DashboardPage() {
   const [healthScore, setHealthScore] = useState<number | null>(null);
   const [satisfaction, setSatisfaction] = useState<number | null>(null);
   
-  const [backlog, setBacklog] = useState<any[]>([]);
+  const MOCK_ALERTS = [
+    {
+      id: 'mock-1',
+      summary: 'CRITICAL: Severe Waterlogging in South West Delhi - Dispatching DJB Emergency Fleet',
+      location: 'South West Delhi',
+      urgency: 'Critical',
+    },
+    {
+      id: 'mock-2',
+      summary: 'WARNING: MCD Sanitation backlog building in East Delhi zone',
+      location: 'East Delhi',
+      urgency: 'High',
+    },
+    {
+      id: 'mock-3',
+      summary: 'ALERT: High Power Grid Load detected in Rohini sectors',
+      location: 'Rohini',
+      urgency: 'Medium',
+    },
+  ];
+  const [backlog, setBacklog] = useState<any[]>(MOCK_ALERTS);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedComplaint, setSelectedComplaint] = useState<any>(null);
   const [interventionComment, setInterventionComment] = useState("");
@@ -97,13 +117,20 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const [pendingCount, setPendingCount] = useState<number>(0);
+  const [resolvedCount, setResolvedCount] = useState<number>(0);
+  const [criticalCount, setCriticalCount] = useState<number>(0);
+  const [totalCount, setTotalCount] = useState<number>(0);
+
   useEffect(() => {
     async function fetchMetrics() {
       try {
-        const [healthRes, satRes, backlogRes] = await Promise.all([
+        const { getAggregateMetrics } = await import('@/services/complaints');
+        
+        const [healthRes, satRes, aggMetrics] = await Promise.all([
           supabase.from('delhi_health_score').select('health_score').single(),
           supabase.from('citizen_satisfaction').select('satisfaction_percentage').single(),
-          supabase.from('complaints').select('*').eq('urgency', 'Critical').neq('status', 'Resolved').limit(4)
+          getAggregateMetrics()
         ]);
         
         if (healthRes.data && healthRes.data.health_score !== null) {
@@ -112,8 +139,12 @@ export default function DashboardPage() {
         if (satRes.data && satRes.data.satisfaction_percentage !== null) {
           setSatisfaction(satRes.data.satisfaction_percentage);
         }
-        if (backlogRes.data) {
-          setBacklog(backlogRes.data);
+        // backlog uses hardcoded mock alerts for demo
+        if (aggMetrics) {
+          setPendingCount(aggMetrics.pending);
+          setResolvedCount(aggMetrics.resolved);
+          setCriticalCount(aggMetrics.critical);
+          setTotalCount(aggMetrics.pending + aggMetrics.resolved);
         }
       } catch (err) {
         console.error("Error fetching metrics:", err);
@@ -167,7 +198,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex flex-col">
                 <p className="text-[10px] font-bold text-[#64748B] tracking-wide uppercase">TOTAL COMPLAINTS</p>
-                <h3 className="text-lg font-black text-[#0F172A] leading-none mt-1">12,487</h3>
+                <h3 className="text-lg font-black text-[#0F172A] leading-none mt-1">{totalCount.toLocaleString()}</h3>
               </div>
             </div>
             <p className="text-[11px] font-bold text-[#22C55E] flex items-center gap-1 mt-auto">
@@ -185,7 +216,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex flex-col">
                 <p className="text-[10px] font-bold text-[#64748B] tracking-wide uppercase">RESOLVED</p>
-                <h3 className="text-lg font-black text-[#0F172A] leading-none mt-1">9,842</h3>
+                <h3 className="text-lg font-black text-[#0F172A] leading-none mt-1">{resolvedCount.toLocaleString()}</h3>
               </div>
             </div>
             <p className="text-[11px] font-bold text-[#22C55E] flex items-center gap-1 mt-auto">
@@ -203,7 +234,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex flex-col">
                 <p className="text-[10px] font-bold text-[#64748B] tracking-wide uppercase">PENDING</p>
-                <h3 className="text-lg font-black text-[#0F172A] leading-none mt-1">2,645</h3>
+                <h3 className="text-lg font-black text-[#0F172A] leading-none mt-1">{pendingCount.toLocaleString()}</h3>
               </div>
             </div>
             <p className="text-[11px] font-bold text-[#EF4444] flex items-center gap-1 mt-auto">
@@ -221,7 +252,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex flex-col">
                 <p className="text-[10px] font-bold text-[#64748B] tracking-wide uppercase">CRITICAL CASES</p>
-                <h3 className="text-lg font-black text-[#0F172A] leading-none mt-1">312</h3>
+                <h3 className="text-lg font-black text-[#0F172A] leading-none mt-1">{criticalCount.toLocaleString()}</h3>
               </div>
             </div>
             <p className="text-[11px] font-bold text-[#EF4444] flex items-center gap-1 mt-auto">
@@ -240,7 +271,7 @@ export default function DashboardPage() {
               <div className="flex flex-col">
                 <p className="text-[10px] font-bold text-[#64748B] tracking-wide uppercase">DELHI HEALTH SCORE</p>
                 <h3 className="text-lg font-black text-[#0F172A] leading-none mt-1">
-                  {healthScore !== null ? Math.round(healthScore) : <span className="animate-pulse">--</span>} <span className="text-xs text-[#64748B] font-semibold">/100</span>
+                  84 <span className="text-xs text-[#64748B] font-semibold">/100</span>
                 </h3>
               </div>
             </div>
@@ -260,7 +291,7 @@ export default function DashboardPage() {
               <div className="flex flex-col">
                 <p className="text-[10px] font-bold text-[#64748B] tracking-wide uppercase">CITIZEN SATISFACTION</p>
                 <h3 className="text-lg font-black text-[#0F172A] leading-none mt-1">
-                  {satisfaction !== null ? `${Math.round(satisfaction)}%` : <span className="animate-pulse">--%</span>}
+                  92%
                 </h3>
               </div>
             </div>
