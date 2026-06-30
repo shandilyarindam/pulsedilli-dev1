@@ -97,9 +97,9 @@ export default function OfficersPage() {
   const fetchData = useCallback(async () => {
     try {
       const { data } = await supabase
-        .from("raw_complaints")
-        .select("id,summary,category,status,urgency,location,ward,assigned_to,assigned_at,resolved_at,timestamp")
-        .order("assigned_at", { ascending: false });
+        .from("complaints")
+        .select("id,ticket_id,title,status,severity,city,assigned_officer_id,created_at,resolved_at")
+        .order("created_at", { ascending: false });
 
       const rows = (data || []) as RawComplaint[];
       setAllComplaints(rows);

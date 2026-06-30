@@ -62,11 +62,11 @@ export default function KanbanPage() {
   const fetchData = useCallback(async () => {
     try {
       const { data } = await supabase
-        .from("raw_complaints")
+        .from("complaints")
         .select(
-          "id,summary,category,status,urgency,timestamp,location,ward,assigned_to,resolved_at"
+          "id,ticket_id,title,status,severity,created_at,city,assigned_officer_id"
         )
-        .order("timestamp", { ascending: false });
+        .order("created_at", { ascending: false });
       setComplaints((data || []) as ManageComplaint[]);
     } catch {
       console.error("Failed to fetch kanban data");
@@ -130,8 +130,8 @@ export default function KanbanPage() {
       )
     );
     await supabase
-      .from("raw_complaints")
-      .update({ status: "open" })
+      .from("complaints")
+      .update({ status: "submitted" } as any)
       .eq("id", id);
     fetchData();
   }

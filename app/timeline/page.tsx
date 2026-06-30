@@ -51,9 +51,9 @@ export default function TimelinePage() {
   const fetchData = useCallback(async () => {
     try {
       const { data } = await supabase
-        .from("raw_complaints")
-        .select("id,summary,category,status,urgency,location,ward,assigned_to,assigned_at,resolved_at,timestamp")
-        .order("timestamp", { ascending: false })
+        .from("complaints")
+        .select("id,ticket_id,title,status,severity,city,assigned_officer_id,created_at,resolved_at")
+        .order("created_at", { ascending: false })
         .limit(200);
       setAllComplaints((data || []) as RawComplaint[]);
     } catch (err) {

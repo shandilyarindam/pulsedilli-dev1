@@ -84,12 +84,11 @@ export default function ManageComplaintModal({
     
     try {
       const { error } = await supabase
-        .from("raw_complaints")
+        .from("complaints")
         .update({
-          assigned_to: selectedOfficer,
-          assigned_at: new Date().toISOString(),
-          status: "assigned",
-        })
+          assigned_officer_id: selectedOfficer,
+          status: "in_progress",
+        } as any)
         .eq("id", complaint.id);
       
       if (error) {
@@ -117,12 +116,11 @@ export default function ManageComplaintModal({
     
     try {
       const { error } = await supabase
-        .from("raw_complaints")
+        .from("complaints")
         .update({
           status: "resolved",
           resolved_at: new Date().toISOString(),
-          officer_notes: resolveNotes.trim(),
-        })
+        } as any)
         .eq("id", complaint.id);
       
       if (error) {
