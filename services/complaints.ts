@@ -120,7 +120,7 @@ export async function getComplaintsByDepartment() {
 
   if (error) throw error;
 
-  const grouped = data.reduce((acc: Record<string, number>, curr: any) => {
+  const grouped = data.reduce((acc: Record<string, number>, curr: { categories?: { department: string } | null }) => {
     const dept = curr.categories?.department || 'Unknown';
     if (!acc[dept]) acc[dept] = 0;
     acc[dept] += 1;
@@ -268,3 +268,14 @@ export async function getPriorityInterventions(): Promise<PriorityIntervention[]
   return (data ?? []) as unknown as PriorityIntervention[];
 }
 
+export async function getAllComplaintsData() {
+  const { data, error } = await supabase
+    .from('complaints')
+    .select('*, categories(name, department), profiles!assigned_officer_id(full_name, role)')
+    .order('created_at', { ascending: false })
+    .limit(5000); // Reasonable limit for exports and AI
+
+  if (error) throw error;
+
+  return (data ?? []) as unknown as ComplaintListRow[];
+}
